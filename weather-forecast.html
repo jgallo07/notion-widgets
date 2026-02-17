@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>5-Day Forecast Widget</title>
+  <link rel="preconnect" href="https://rsms.me/">
+  <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --bg: #ffffff;
+      --text-primary: #37352f;
+      --text-secondary: #6b6b6b;
+      --text-muted: #9b9b9b;
+      --border: rgba(55, 53, 47, 0.09);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #191919;
+        --text-primary: #e3e3e3;
+        --text-secondary: #9b9b9b;
+        --text-muted: #6b6b6b;
+        --border: rgba(255, 255, 255, 0.09);
+      }
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI",
+        Helvetica, Arial, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      background: var(--bg);
+    }
+
+    .widget {
+      display: flex;
+      justify-content: center;
+      align-items: stretch;
+      gap: 0;
+      padding: 16px 8px;
+      background: var(--bg);
+    }
+
+    .day {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 20px;
+      position: relative;
+    }
+
+    .day:not(:last-child)::after {
+      content: '';
+      position: absolute;
+      right: 0;
+      top: 15%;
+      height: 70%;
+      width: 1px;
+      background: var(--border);
+    }
+
+    .day-name {
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--text-primary);
+      letter-spacing: 0.01em;
+    }
+
+    .day-icon {
+      width: 48px;
+      height: 48px;
+      object-fit: contain;
+    }
+
+    .temps {
+      display: flex;
+      gap: 8px;
+      align-items: baseline;
+    }
+
+    .temp-high {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .temp-low {
+      font-size: 0.85rem;
+      font-weight: 400;
+      color: var(--text-muted);
+    }
+
+    .loading, .error {
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+      padding: 24px;
+      text-align: center;
+    }
+
+    .error {
+      color: #eb5757;
+    }
+  </style>
+</head>
+<body>
+  <div class="widget" id="widget">
+    <div class="loading">Loading forecast...</div>
+  </div>
+
+  <script>
+    // === CONFIGURATION ===
+    const API_KEY = '921b344f3e60883e19deac6f7229224e';  // Replace with your OpenWeatherMap API key
+    const CITY = 'Waltham';
+    const STATE = 'MA';
+    const COUNTRY = 'US';
+    const UNITS = 'imperial';  // 'imperial' for °F, 'metric' for °C
+
+    const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+    async function fetchForecast() {
+      try {
+        // Step 1: Geocode city name to coordinates
+        const geoUrl = `https://api.openweathermap.org/geo/1.0/direct?q=${CITY},${STATE},${COUNTRY}&limit=1&appid=${API_KEY}`;
+        const geoResponse = await fetch(geoUrl);
+        if (!geoResponse.ok) throw new Error('Geocoding failed');
+        const geoData = await geoResponse.json();
+        if (!geoData.length) throw new Error('City not found');
+
+        const { lat, lon } = geoData[0];
+
+        // Step 2: Fetch 5-day / 3-hour forecast
+        const forecastUrl = `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&units=${UNITS}&appid=${API_KEY}`;
+        const forecastResponse = await fetch(forecastUrl);
+        if (!forecastResponse.ok) throw new Error('Forecast data unavailable');
+        const forecastData = await forecastResponse.json();
+
+        // Step 3: Group forecast data by day and calculate daily high/low
+        const dailyMap = {};
+
+        forecastData.list.forEach(entry => {
+          // Get the date string in local time
+          const date = new Date(entry.dt * 1000);
+          const dateKey = date.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' });
+
+          if (!dailyMap[dateKey]) {
+            dailyMap[dateKey] = {
+              date: date,
+              high: -Infinity,
+              low: Infinity,
+              // Collect icons from daytime entries (to pick a representative icon)
+              icons: [],
+              allIcons: []
+            };
+          }
+
+          const day = dailyMap[dateKey];
+          day.high = Math.max(day.high, entry.main.temp_max);
+          day.low = Math.min(day.low, entry.main.temp_min);
+          day.allIcons.push(entry.weather[0].icon);
+
+          // Prefer daytime icons (ending with 'd') for the display
+          const icon = entry.weather[0].icon;
+          if (icon.endsWith('d')) {
+            day.icons.push(icon);
+          }
+        });
+
+        // Step 4: Get the next 5 days (skip today if we have fewer than 4 data points for it)
+        const today = new Date();
+        const todayKey = today.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' });
+
+        const days = Object.entries(dailyMap)
+          .sort(([a], [b]) => new Date(a) - new Date(b))
+          .map(([key, val]) => ({ key, ...val }));
+
+        // If today has limited data points, start from today anyway for a better UX
+        const forecastDays = days.slice(0, 5);
+
+        // Step 5: Render the widget
+        const widget = document.getElementById('widget');
+        widget.innerHTML = '';
+
+        forecastDays.forEach(day => {
+          // Pick the most common daytime icon, or fall back to any icon
+          const icon = day.icons.length > 0
+            ? mostCommon(day.icons)
+            : mostCommon(day.allIcons);
+
+          const dayEl = document.createElement('div');
+          dayEl.className = 'day';
+          dayEl.innerHTML = `
+            <span class="day-name">${DAY_NAMES[day.date.getDay()]}</span>
+            <img class="day-icon" src="https://openweathermap.org/img/wn/${icon}@2x.png" alt="weather icon">
+            <div class="temps">
+              <span class="temp-high">${Math.round(day.high)}°</span>
+              <span class="temp-low">${Math.round(day.low)}°</span>
+            </div>
+          `;
+          widget.appendChild(dayEl);
+        });
+
+      } catch (err) {
+        document.getElementById('widget').innerHTML =
+          `<div class="error">Error loading forecast</div>`;
+        console.error(err);
+      }
+    }
+
+    // Helper: find the most common element in an array
+    function mostCommon(arr) {
+      const counts = {};
+      arr.forEach(item => counts[item] = (counts[item] || 0) + 1);
+      return Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
+    }
+
+    // Fetch immediately, then refresh every 30 minutes
+    fetchForecast();
+    setInterval(fetchForecast, 30 * 60 * 1000);
+  </script>
+</body>
+</html>
