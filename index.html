@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Weather Widget</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      background: transparent;
+    }
+
+    .widget {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: white;
+      border-radius: 16px;
+      padding: 24px;
+      width: 320px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+    }
+
+    .city {
+      font-size: 1.1rem;
+      opacity: 0.9;
+    }
+
+    .temp {
+      font-size: 3.5rem;
+      font-weight: 700;
+      margin: 8px 0;
+    }
+
+    .description {
+      font-size: 1rem;
+      text-transform: capitalize;
+      opacity: 0.9;
+    }
+
+    .details {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid rgba(255,255,255,0.3);
+      font-size: 0.85rem;
+    }
+
+    .error {
+      color: #ffcccc;
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="widget">
+    <div class="city" id="city">Loading...</div>
+    <div class="temp" id="temp">--°</div>
+    <div class="description" id="desc"></div>
+    <div class="details">
+      <span id="humidity">Humidity: --%</span>
+      <span id="wind">Wind: -- mph</span>
+    </div>
+  </div>
+
+  <script>
+    // === CONFIGURATION ===
+    const API_KEY = '921b344f3e60883e19deac6f7229224e';  // Replace with your key
+    const CITY = 'Waltham,MA,US';         // Change to your city
+    const UNITS = 'imperial';              // 'imperial' for °F, 'metric' for °C
+
+    async function fetchWeather() {
+      try {
+        const url = `https://api.openweathermap.org/data/2.5/weather?q=${CITY}&units=${UNITS}&appid=${API_KEY}`;
+        const response = await fetch(url);
+
+        if (!response.ok) throw new Error('Weather data unavailable');
+
+        const data = await response.json();
+
+        document.getElementById('city').textContent = data.name;
+        document.getElementById('temp').textContent = `${Math.round(data.main.temp)}°`;
+        document.getElementById('desc').textContent = data.weather[0].description;
+        document.getElementById('humidity').textContent = `Humidity: ${data.main.humidity}%`;
+        document.getElementById('wind').textContent = `Wind: ${Math.round(data.wind.speed)} mph`;
+
+      } catch (err) {
+        document.getElementById('city').textContent = 'Error loading weather';
+        document.getElementById('city').classList.add('error');
+        console.error(err);
+      }
+    }
+
+    // Fetch immediately, then refresh every 30 minutes
+    fetchWeather();
+    setInterval(fetchWeather, 30 * 60 * 1000);
+  </script>
+</body>
+</html>
